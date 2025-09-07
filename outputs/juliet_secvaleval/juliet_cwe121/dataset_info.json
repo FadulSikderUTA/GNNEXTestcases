@@ -1,0 +1,19 @@
+{
+  "dataset_name": "juliet_cwe121_vulnerability_detection",
+  "description": "Juliet Test Suite CWE121 for C/C++ converted to SecValEval-compatible format",
+  "total_pairs": 3048,
+  "total_records": 6096,
+  "splits": {
+    "train": 4266,
+    "validation": 914,
+    "test": 916
+  },
+  "cwe_type": "CWE121",
+  "schema": {
+    "originated_program_path": "Path to original file in linux_compatible dataset",
+    "program_path": "Path to separated Bad/Good file",
+    "testcases_name": "Clean test case identifier",
+    "whole_program_body": "Complete file content",
+    "is_vulnerable": "True for Bad files, False for Good files"
+  }
+}

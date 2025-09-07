@@ -1,0 +1,140 @@
+{
+  "builder_name": "parquet",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "sec_vul_eval",
+  "dataset_size": 118491621,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/arag0rn/SecVulEval@0c32abb1cf20c08a412297e5fd1b5fddf7276d2e/data/train-00000-of-00001.parquet": {
+      "num_bytes": 30847988,
+      "checksum": null
+    }
+  },
+  "download_size": 30847988,
+  "features": {
+    "idx": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "project": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "filepath": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "commit_id": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "commit_message": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "is_vulnerable": {
+      "dtype": "bool",
+      "_type": "Value"
+    },
+    "hash": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "func_name": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "func_body": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "changed_lines": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "changed_statements": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "cve_list": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "List"
+    },
+    "cwe_list": {
+      "feature": {
+        "dtype": "string",
+        "_type": "Value"
+      },
+      "_type": "List"
+    },
+    "fixed_func_idx": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "context": {
+      "Execution Environment": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      },
+      "Explanation": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      },
+      "External Function": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      },
+      "Function Argument": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      },
+      "Globals": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      },
+      "Type Execution Declaration": {
+        "feature": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "_type": "List"
+      }
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 149339609,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 118491621,
+      "num_examples": 25440,
+      "dataset_name": "sec_vul_eval"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}

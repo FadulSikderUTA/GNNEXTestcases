@@ -1,0 +1,8 @@
+JAVA:
+openjdk version "21.0.8" 2025-07-15
+JAVAC:
+javac 17.0.16
+DOT:
+dot - graphviz version 2.43.0 (0)
+JOERN:
+(joern command available but version not displayed)
