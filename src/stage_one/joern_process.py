@@ -28,6 +28,72 @@ import subprocess
 import argparse
 import shutil
 from pathlib import Path
+import time
+
+def validate_dot_content_for_cfg_call(dot_file_path):
+    """
+    Validate that DOT file contains CFG and CALL edges (critical for vulnerability analysis).
+    
+    Args:
+        dot_file_path: Path to DOT file to validate
+    
+    Returns:
+        Tuple of (has_cfg_edges, has_call_edges, cfg_count, call_count)
+    """
+    if not os.path.exists(dot_file_path):
+        return False, False, 0, 0
+    
+    try:
+        with open(dot_file_path, 'r') as f:
+            content = f.read()
+            
+        # Count CFG and CALL edges
+        cfg_count = content.count('[label="CFG"')
+        call_count = content.count('[label="CALL"')
+        
+        has_cfg = cfg_count > 0
+        has_call = call_count > 0
+        
+        return has_cfg, has_call, cfg_count, call_count
+        
+    except Exception as e:
+        print(f"⚠️  Error validating DOT content: {e}")
+        return False, False, 0, 0
+
+def wait_for_stable_size(file_path, max_wait_time=5.0, check_interval=0.1):
+    """
+    Wait for a file to reach a stable size (stops growing) to ensure write completion.
+    
+    Args:
+        file_path: Path to file to monitor
+        max_wait_time: Maximum time to wait in seconds
+        check_interval: Time between size checks in seconds
+    
+    Returns:
+        Boolean indicating if file became stable (True) or timeout (False)
+    """
+    if not os.path.exists(file_path):
+        return False
+    
+    start_time = time.time()
+    last_size = -1
+    stable_checks = 0
+    required_stable_checks = 3  # Need 3 consecutive stable checks
+    
+    while time.time() - start_time < max_wait_time:
+        current_size = os.path.getsize(file_path)
+        
+        if current_size == last_size:
+            stable_checks += 1
+            if stable_checks >= required_stable_checks:
+                return True
+        else:
+            stable_checks = 0  # Reset counter if size changed
+            last_size = current_size
+        
+        time.sleep(check_interval)
+    
+    return False
 
 def run_command(command, cwd=None):
     """
@@ -114,17 +180,17 @@ def generate_cpg(c_source_file, output_dir, max_retries=2):
         ]
         
         if run_command(joern_parse_cmd):
-            # Add filesystem sync delay for parallel processing
-            import time
-            time.sleep(0.1)
-            
-            # Verify CPG was created and has reasonable size
-            if os.path.exists(cpg_bin_path) and os.path.getsize(cpg_bin_path) > 1000:
-                file_size = os.path.getsize(cpg_bin_path) / 1024  # Size in KB
-                print(f"✅ CPG generated: {cpg_bin_path} ({file_size:.2f} KB)")
-                return cpg_bin_path
+            # Wait for filesystem stability instead of fixed delay
+            if wait_for_stable_size(cpg_bin_path, max_wait_time=5.0):
+                # Verify CPG was created and has reasonable size
+                if os.path.exists(cpg_bin_path) and os.path.getsize(cpg_bin_path) > 1000:
+                    file_size = os.path.getsize(cpg_bin_path) / 1024  # Size in KB
+                    print(f"✅ CPG generated: {cpg_bin_path} ({file_size:.2f} KB)")
+                    return cpg_bin_path
+                else:
+                    print(f"⚠️  CPG file missing or too small (attempt {attempt + 1})")
             else:
-                print(f"⚠️  CPG file missing or too small (attempt {attempt + 1})")
+                print(f"⚠️  CPG file not stable (attempt {attempt + 1})")
         else:
             print(f"⚠️  Command failed (attempt {attempt + 1})")
     
@@ -180,39 +246,49 @@ def export_dot_format(cpg_bin_path, output_dir, max_retries=2):
         ]
         
         if run_command(joern_export_cmd):
-            # Add filesystem sync delay for parallel processing
-            import time
-            time.sleep(0.1)
-            
-            # Verify DOT file was created and has reasonable size
-            if os.path.exists(temp_dot_path) and os.path.getsize(temp_dot_path) > 100:
-                # Additional validation: Check if it's a valid DOT file
-                try:
-                    with open(temp_dot_path, 'r') as f:
-                        content = f.read(200)
-                        if 'digraph' in content:
-                            # Success! Now move to final location
-                            os.makedirs(final_dot_dir, exist_ok=True)
-                            
-                            # Atomic move to final location
-                            import shutil
-                            shutil.move(temp_dot_path, final_dot_path)
-                            
-                            # Clean up temp directory
-                            try:
-                                shutil.rmtree(temp_dot_dir)
-                            except:
-                                pass  # Don't fail if temp cleanup fails
-                            
-                            file_size = os.path.getsize(final_dot_path) / 1024  # Size in KB
-                            print(f"✅ DOT exported: {final_dot_path} ({file_size:.2f} KB)")
-                            return final_dot_path
-                        else:
-                            print(f"⚠️  Invalid DOT format (attempt {attempt + 1})")
-                except:
-                    print(f"⚠️  Cannot read DOT file (attempt {attempt + 1})")
+            # Wait for filesystem stability instead of fixed delay
+            if wait_for_stable_size(temp_dot_path, max_wait_time=5.0):
+                # Verify DOT file was created and has reasonable size
+                if os.path.exists(temp_dot_path) and os.path.getsize(temp_dot_path) > 100:
+                    # Additional validation: Check if it's a valid DOT file
+                    try:
+                        with open(temp_dot_path, 'r') as f:
+                            content = f.read(200)
+                            if 'digraph' in content:
+                                # Additional validation: Check for CFG/CALL edges
+                                has_cfg, has_call, cfg_count, call_count = validate_dot_content_for_cfg_call(temp_dot_path)
+                                
+                                if not has_cfg:
+                                    print(f"⚠️  Warning: DOT file missing CFG edges ({cfg_count}) - this may indicate CPG corruption (attempt {attempt + 1})")
+                                    # Continue anyway but log the issue
+                                if not has_call:
+                                    print(f"⚠️  Warning: DOT file missing CALL edges ({call_count}) (attempt {attempt + 1})")
+                                    # Continue anyway but log the issue
+                                
+                                # Success! Now move to final location
+                                os.makedirs(final_dot_dir, exist_ok=True)
+                                
+                                # Atomic move to final location
+                                import shutil
+                                shutil.move(temp_dot_path, final_dot_path)
+                                
+                                # Clean up temp directory
+                                try:
+                                    shutil.rmtree(temp_dot_dir)
+                                except:
+                                    pass  # Don't fail if temp cleanup fails
+                                
+                                file_size = os.path.getsize(final_dot_path) / 1024  # Size in KB
+                                print(f"✅ DOT exported: {final_dot_path} ({file_size:.2f} KB) - CFG: {cfg_count}, CALL: {call_count}")
+                                return final_dot_path
+                            else:
+                                print(f"⚠️  Invalid DOT format (attempt {attempt + 1})")
+                    except:
+                        print(f"⚠️  Cannot read DOT file (attempt {attempt + 1})")
+                else:
+                    print(f"⚠️  DOT file missing or too small (attempt {attempt + 1})")
             else:
-                print(f"⚠️  DOT file missing or too small (attempt {attempt + 1})")
+                print(f"⚠️  DOT file not stable (attempt {attempt + 1})")
         else:
             print(f"⚠️  Command failed (attempt {attempt + 1})")
         

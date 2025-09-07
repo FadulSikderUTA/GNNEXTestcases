@@ -494,32 +494,30 @@ def process_single_sample(args: Tuple[Dict, Path]) -> Dict:
         result['stage'] = 'joern_cpg'
         joern_dir.mkdir(parents=True, exist_ok=True)
         
-        # Acquire semaphore to limit concurrent Joern processes
+        # Acquire semaphore to limit concurrent Joern processes - ATOMIC OPERATIONS
+        # Keep both CPG generation and DOT export in single semaphore block to prevent race conditions
         with JOERN_SEMAPHORE:
             cpg_path = joern.generate_cpg(str(tu_path), str(joern_dir))
-        
-        # Robust validation: Check both return value and actual file existence
-        cpg_file = joern_dir / "cpg.bin"
-        if not cpg_path or not cpg_file.exists() or cpg_file.stat().st_size < 1000:
-            # Double-check with short delay for filesystem latency in parallel processing
-            time.sleep(0.2)  # 200ms delay for filesystem sync
-            if not cpg_file.exists() or cpg_file.stat().st_size < 1000:
-                result.update({
-                    'status': 'failed',
-                    'error_message': f'Joern CPG generation failed - file missing or too small ({cpg_file.stat().st_size if cpg_file.exists() else 0} bytes)'
-                })
-                return result
-            else:
-                # Recover from timing issue
-                cpg_path = str(cpg_file)
-        
-        result['artifacts']['cpg'] = cpg_path
-        
-        # Step 1a: Export DOT format with resource management
-        result['stage'] = 'joern_dot'
-        
-        # Acquire semaphore to limit concurrent Joern processes
-        with JOERN_SEMAPHORE:
+            
+            # Robust validation: Check both return value and actual file existence
+            cpg_file = joern_dir / "cpg.bin"
+            if not cpg_path or not cpg_file.exists() or cpg_file.stat().st_size < 1000:
+                # Double-check with short delay for filesystem latency in parallel processing
+                time.sleep(0.2)  # 200ms delay for filesystem sync
+                if not cpg_file.exists() or cpg_file.stat().st_size < 1000:
+                    result.update({
+                        'status': 'failed',
+                        'error_message': f'Joern CPG generation failed - file missing or too small ({cpg_file.stat().st_size if cpg_file.exists() else 0} bytes)'
+                    })
+                    return result
+                else:
+                    # Recover from timing issue
+                    cpg_path = str(cpg_file)
+            
+            result['artifacts']['cpg'] = cpg_path
+            
+            # Step 1a: Export DOT format (within same semaphore for atomicity)
+            result['stage'] = 'joern_dot'
             dot_path = joern.export_dot_format(cpg_path, str(joern_dir))
         
         # Robust validation: Check both return value and actual file existence/content
@@ -537,7 +535,7 @@ def process_single_sample(args: Tuple[Dict, Path]) -> Dict:
                 # Recover from timing issue
                 dot_path = str(expected_dot_file)
         
-        # Additional validation: Check DOT file content is valid
+        # Additional validation: Check DOT file content is valid and has CFG/CALL edges
         try:
             with open(dot_path, 'r') as f:
                 content = f.read(200)  # Read first 200 chars
@@ -547,6 +545,23 @@ def process_single_sample(args: Tuple[Dict, Path]) -> Dict:
                         'error_message': 'Joern DOT export failed - invalid DOT format (missing digraph)'
                     })
                     return result
+            
+            # Additional validation: Check for CFG/CALL edges (critical for vulnerability analysis)
+            has_cfg, has_call, cfg_count, call_count = joern.validate_dot_content_for_cfg_call(dot_path)
+            result['debug_info'] = {
+                'cfg_edges': cfg_count,
+                'call_edges': call_count,
+                'has_cfg': has_cfg,
+                'has_call': has_call
+            }
+            
+            if not has_cfg:
+                print(f"⚠️  Warning: {program_path} - DOT file missing CFG edges ({cfg_count}) - may indicate CPG corruption")
+                # Continue processing but log the issue for investigation
+            if not has_call:
+                print(f"⚠️  Warning: {program_path} - DOT file missing CALL edges ({call_count})")
+                # Continue processing but log the issue for investigation
+                
         except Exception as e:
             result.update({
                 'status': 'failed',
